@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<head>
+<meta charset="UTF-8">
+<title>又拍云大文件上传客户端-beta</title>
+<script src="js/jquery-3.2.1.js"></script>
+<script src="js/spark-md5.js"></script>
+<script type="text/javascript">
+$(document).ready(function () {
+	$("#file").change(function () {
+		bucket_name=$("#bucket_name").val(); 
+		opename=$("#opename").val();
+		opepass=$("#opepass").val();
+		acc_point="http://v0.api.upyun.com/";
+		document.getElementById('file').disabled=true;
+		file=$(this).get(0).files[0];
+		infoHtml="文件名称:"+file.name;
+		infoHtml+= "&nbsp;&nbsp;文件大小:"+file.size+"byte";
+		save__as=document.getElementById('save_as').value;
+		if(save__as==""){
+			infoHtml+= "&nbsp;&nbsp;保存路径:/"+file.name+"<br/>";
+			save_as="/"+file.name;
+		}else{
+			satemp=save__as.indexOf("/");
+			if(satemp==0){
+			infoHtml+= "&nbsp;&nbsp;保存路径:"+$("#save_as").val()+"<br/>";
+			save_as=$("#save_as").val();
+			}else{document.getElementById('save_as').value="保存路径须以/开头";return;}
+		}
+		date=(new Date()).toUTCString();
+		sign=SparkMD5.hash("PUT&/"+encodeURI(bucket_name+save_as)+"&"+date+"&0&"+SparkMD5.hash(opepass));
+		$("#info").html(infoHtml);
+		if(document.getElementById('smidupload').value==""){
+		var xhr = new XMLHttpRequest();
+		xhr.open('PUT', encodeURI(acc_point+bucket_name+save_as), true);
+		xhr.setRequestHeader("Authorization","UpYun "+opename+":"+sign);
+		xhr.setRequestHeader("X-Date",date);
+		xhr.setRequestHeader("X-Upyun-Multi-Stage","initiate");
+		xhr.setRequestHeader("x-upyun-multi-type",file.type);
+		xhr.setRequestHeader("X-Upyun-Multi-Length",file.size);
+		xhr.setRequestHeader("Content-Type","application/x-www-form-urlencoded; charset=utf-8");
+		xhr.send();
+		xhr.onload=function(event){
+		  if(xhr.status==204){
+			  uuid=xhr.getResponseHeader("x-upyun-multi-uuid");
+			  resuuid=$("#info").html()+"<br/>初始化成功!<br/>本次上传uuid:"+uuid+ "<br/>";
+			  $("#info").html(resuuid);
+			  document.getElementById("onmmupload").value="1";
+		    blockSize="1048576";
+		    k="0";
+		    t=Math.ceil(file.size / blockSize);
+			function mainupload(){
+				if(k<t-1){
+					udate=(new Date()).toUTCString();
+					var xhrup = new XMLHttpRequest();
+					var usign=SparkMD5.hash("PUT&/"+encodeURI(bucket_name+save_as)+"&"+udate+"&"+blockSize+"&"+SparkMD5.hash(opepass));
+					var data=file.slice(k*blockSize, (parseInt(k)+1)*blockSize);
+					xhrup.open('PUT', encodeURI(acc_point+bucket_name+save_as), true);
+					xhrup.setRequestHeader("Authorization","UpYun "+opename+":"+usign);
+					xhrup.setRequestHeader("X-Date",udate);
+					xhrup.setRequestHeader("X-Upyun-Multi-Stage","upload");
+					xhrup.setRequestHeader("X-Upyun-Multi-Length",blockSize);
+					xhrup.setRequestHeader("X-Upyun-Multi-UUID",uuid);
+					xhrup.setRequestHeader("X-Upyun-Part-ID",k);
+					xhrup.setRequestHeader("Content-Type","application/x-www-form-urlencoded; charset=utf-8");
+					xhrup.onreadystatechange=(function(){if(xhrup.readyState==4&&xhrup.status==204){
+						var upercent=((parseInt(k)+1)*100 / t).toFixed(3);
+						var upmes=$("#info").html()+"第"+(parseInt(k)+1)+ "块上传完成, 进度:"+upercent+"%, 继续...";
+						$("#info").html(upmes);k++;mainupload();
+					}else{var upmes=$("#info").html()+xhrup.responseText+"<br/>";$("#info").html(upmes);
+					document.getElementById('file').disabled=false;document.getElementById('smidupload').value="";$("#file").val('');}});
+					xhrup.send(data);
+				}else{
+					udate=(new Date()).toUTCString();
+					var xhrup = new XMLHttpRequest();
+					var endsize=file.size-k*blockSize;
+					var usign=SparkMD5.hash("PUT&/"+encodeURI(bucket_name+save_as)+"&"+udate+"&"+endsize+"&"+SparkMD5.hash(opepass));
+					var data=file.slice(k*blockSize, file.size);
+					xhrup.open('PUT', encodeURI(acc_point+bucket_name+save_as), true);
+					xhrup.setRequestHeader("Authorization","UpYun "+opename+":"+usign);
+					xhrup.setRequestHeader("X-Date",udate);
+					xhrup.setRequestHeader("X-Upyun-Multi-Stage","upload");
+					xhrup.setRequestHeader("X-Upyun-Multi-Length",endsize);
+					xhrup.setRequestHeader("X-Upyun-Multi-UUID",uuid);
+					xhrup.setRequestHeader("X-Upyun-Part-ID",k);
+					xhrup.setRequestHeader("Content-Type","application/x-www-form-urlencoded; charset=utf-8");
+					xhrup.onreadystatechange=(function(){if(xhrup.readyState==4&&xhrup.status==204){
+						var upmes=$("#info").html()+"<br/>第"+(parseInt(k)+1)+ "块上传完成, 进度:100%, 继续...<br/><br/>";
+						$("#info").html(upmes);
+						var resmes=$("#info").html()+"分块上传完成.<br/>";
+						$("#info").html(resmes);
+						var xhrfs = new XMLHttpRequest();
+						var fdate=(new Date()).toUTCString();
+						var fsign=SparkMD5.hash("PUT&/"+encodeURI(bucket_name+save_as)+"&"+fdate+"&0&"+SparkMD5.hash(opepass));
+						xhrfs.open('PUT', encodeURI(acc_point+bucket_name+save_as), false);
+						xhrfs.setRequestHeader("Authorization","UpYun "+opename+":"+fsign);
+						xhrfs.setRequestHeader("X-Date",fdate);
+						xhrfs.setRequestHeader("X-Upyun-Multi-Stage","complete");
+						xhrfs.setRequestHeader("X-Upyun-Multi-UUID",uuid);
+						xhrfs.setRequestHeader("Content-Type","application/x-www-form-urlencoded; charset=utf-8");
+						xhrfs.onreadystatechange=(function(){if(xhrfs.readyState==4&&(xhrfs.status==204||xhrfs.status==201)){
+						var fsmes=$("#info").html()+"分块合并成功!上传结束.<br/>";$("#file").val('');
+						$("#info").html(fsmes);document.getElementById('file').disabled=false;document.getElementById("onmmupload").value="";
+								}else{alert("合并分块出现错误,请从第"+(parseInt(k)+1)+"块继续上传.");$("#file").val('');
+								document.getElementById('file').disabled=false;document.getElementById("onmmupload").value="";}});
+						xhrfs.send();
+					}});
+					xhrup.send(data);
+				}
+		}mainupload();}else{alert("初始化失败,代码:"+JSON.parse(xhr.responseText).code);$("#file").val('');
+		document.getElementById('file').disabled=false;document.getElementById("onmmupload").value="";}}}else{
+			blockSize="1048576";
+		    k=$("#smidupblock").val()-1;
+			uuid=$("#smidupuuid").val();
+		    t=Math.ceil(file.size / blockSize);
+			function mainupload(){
+				if(k<t-1){
+					udate=(new Date()).toUTCString();
+					var xhrup = new XMLHttpRequest();
+					var usign=SparkMD5.hash("PUT&/"+encodeURI(bucket_name+save_as)+"&"+udate+"&"+blockSize+"&"+SparkMD5.hash(opepass));
+					var data=file.slice(k*blockSize, (parseInt(k)+1)*blockSize);
+					xhrup.open('PUT', encodeURI(acc_point+bucket_name+save_as), true);
+					xhrup.setRequestHeader("Authorization","UpYun "+opename+":"+usign);
+					xhrup.setRequestHeader("X-Date",udate);
+					xhrup.setRequestHeader("X-Upyun-Multi-Stage","upload");
+					xhrup.setRequestHeader("X-Upyun-Multi-Length",blockSize);
+					xhrup.setRequestHeader("X-Upyun-Multi-UUID",uuid);
+					xhrup.setRequestHeader("X-Upyun-Part-ID",k);
+					xhrup.setRequestHeader("Content-Type","application/x-www-form-urlencoded; charset=utf-8");
+					xhrup.onreadystatechange=(function(){if(xhrup.readyState==4&&xhrup.status==204){
+						var upercent=((parseInt(k)+1)*100 / t).toFixed(3);
+						var upmes=$("#info").html()+"第"+(parseInt(k)+1)+ "块上传完成, 进度:"+upercent+"%, 继续...";
+						$("#info").html(upmes);k++;mainupload();
+					}else{var upmes=$("#info").html()+xhrup.responseText+"<br/>";$("#info").html(upmes);
+					document.getElementById('file').disabled=false;document.getElementById('smidupload').value="";$("#file").val('');}});
+					xhrup.send(data);
+				}else{
+					udate=(new Date()).toUTCString();
+					var xhrup = new XMLHttpRequest();
+					var endsize=file.size-k*blockSize;
+					var usign=SparkMD5.hash("PUT&/"+encodeURI(bucket_name+save_as)+"&"+udate+"&"+endsize+"&"+SparkMD5.hash(opepass));
+					var data=file.slice(k*blockSize, file.size);
+					xhrup.open('PUT', encodeURI(acc_point+bucket_name+save_as), true);
+					xhrup.setRequestHeader("Authorization","UpYun "+opename+":"+usign);
+					xhrup.setRequestHeader("X-Date",udate);
+					xhrup.setRequestHeader("X-Upyun-Multi-Stage","upload");
+					xhrup.setRequestHeader("X-Upyun-Multi-Length",endsize);
+					xhrup.setRequestHeader("X-Upyun-Multi-UUID",uuid);
+					xhrup.setRequestHeader("X-Upyun-Part-ID",k);
+					xhrup.setRequestHeader("Content-Type","application/x-www-form-urlencoded; charset=utf-8");
+					xhrup.onreadystatechange=(function(){if(xhrup.readyState==4&&xhrup.status==204){
+						var upmes=$("#info").html()+"<br/>第"+(parseInt(k)+1)+ "块上传完成, 进度:100%, 继续...<br/><br/>";
+						$("#info").html(upmes);
+						var resmes=$("#info").html()+"分块上传完成.<br/>";
+						$("#info").html(resmes);
+						var xhrfs = new XMLHttpRequest();
+						var fdate=(new Date()).toUTCString();
+						var fsign=SparkMD5.hash("PUT&/"+encodeURI(bucket_name+save_as)+"&"+fdate+"&0&"+SparkMD5.hash(opepass));
+						xhrfs.open('PUT', acc_point+bucket_name+save_as, false);
+						xhrfs.setRequestHeader("Authorization","UpYun "+opename+":"+fsign);
+						xhrfs.setRequestHeader("X-Date",fdate);
+						xhrfs.setRequestHeader("X-Upyun-Multi-Stage","complete");
+						xhrfs.setRequestHeader("X-Upyun-Multi-UUID",uuid);
+						xhrfs.setRequestHeader("Content-Type","application/x-www-form-urlencoded; charset=utf-8");
+						xhrfs.onreadystatechange=(function(){if(xhrfs.readyState==4&&(xhrfs.status==204||xhrfs.status==201)){
+						var fsmes=$("#info").html()+"分块合并成功!上传结束.<br/>";
+						$("#info").html(fsmes);document.getElementById('file').disabled=false;
+						document.getElementById("onmmupload").value="";document.getElementById('smidupload').value="";
+								}else{alert("合并分块出现错误,请从第"+(parseInt(k)+1)+"块继续上传.");$("#file").val('');
+								document.getElementById('file').disabled=false;document.getElementById("onmmupload").value="";document.getElementById('smidupload').value="";}});
+						xhrfs.send();
+					}});
+					xhrup.send(data);
+				}
+		}mainupload();};});
+});
+function switchView(switchview){
+	if(switchview=="view"){
+	document.getElementById('user_login').style.display="none";
+	document.getElementById('upview').style.display="block";
+	$("body").css("background-color","#F1F1F1"); 
+	}else if(switchview=="login"){
+	document.getElementById('user_login').style.display="block";
+	document.getElementById('upview').style.display="none";
+	$("body").css("background-color","#393C3F"); 
+	}
+}
+function continueView(){
+	if($("#onmmupload").val()){alert("请等待当前文件上传完成");return;}else{
+	document.getElementById('failup').style.display="block";
+	document.getElementById('innerup').style.display="block";
+	document.getElementById('file').disabled=true;
+	}
+}
+function hidefup(){
+	document.getElementById('failup').style.display="none";
+	document.getElementById('innerup').style.display="none";
+	document.getElementById('file').disabled=false;
+}
+function continueUp(){
+	document.getElementById("smidupload").value="1";
+	document.getElementById("smidupuuid").value=$("#mu_uuid").val();
+	document.getElementById("smidupblock").value=$("#part_id").val();
+	document.getElementById('innerup').style.display="none";
+	document.getElementById('failup').style.display="none";
+	document.getElementById('file').disabled=false;
+	alert("设置完成.请填写上次的上传路径,然后选择断点失败的文件进行续传.");
+}
+</script>
+<style type="text/css">
+body{
+margin:0 auto;
+padding:0 auto;
+font-size:14px;
+text-align:center;
+background-color:#393C3F;
+}
+#user_login{
+margin-top:8%;
+text-align:center;
+}
+form{
+text-align:center;
+}
+table{
+width:400px;
+height:280px;
+border-radius: 6px;
+padding-top:20px;
+padding-bottom:20px;
+background-color:#F1F1F1;
+}
+table td{
+text-align:center;
+padding:0 auto;
+}
+table tr{
+padding:0 auto;
+}
+input{
+height:30px;
+width:300px;
+background: #fafafa;
+border: 1px solid #ddd;
+font-size:13px;
+color:gray;
+font-style:italic;
+border-radius:4px;
+margin:0 auto;
+text-align:center;
+}
+#save_info{
+color:white;
+cursor:pointer;
+background-color:#50ACF3;
+font-style:normal;
+}
+#save_info:hover{
+background-color:#3EA5F5;
+color:black;
+}
+#backlogin{
+width:100%;
+height:25px;
+margin:0 auto;
+padding:0 auto;
+margin-bottom:5px;
+font-size:13px;
+background-color:#E5E5E5;
+}
+#backlogin img{
+float:left;
+width:20px;
+margin-top:2px;
+margin-left:5px;
+}
+#upview{
+width:100%;
+height:100%;
+margin:0 auto;
+padding:0 auto;
+display:none
+}
+#upprogress{
+width:100%;
+height:100%;
+margin:0 auto;
+padding:0 auto;
+}
+#save_as{
+height:23px;
+width:260px;
+background: #fafafa;
+border: 1px solid #ddd;
+font-size:13px;
+color:gray;
+font-style:italic;
+border-radius:2px;
+margin:0 auto;
+text-align:center;
+}
+#failup{
+position:fixed;
+width:100%;
+height:100%;
+display:none;
+top:0px;
+z-index:10;
+text-align:center;
+}
+#innerup{
+position:fixed;
+display:none;
+width:505px;
+height:185px;
+top:120px;
+margin-left:auto;margin-right:auto;
+left:0px;right:0px;
+z-index:12;
+}
+#innerup table{
+width:500px;
+height:180px;
+background-color:#E5E5E5;
+}
+#innerup table td{
+border:0;
+}
+#cup{
+width:100px;
+color:white;
+cursor:pointer;
+background-color:#50ACF3;
+font-style:normal;
+}
+#cup:hover{
+background-color:#3EA5F5;
+color:black;
+}
+.a-upload {
+padding: 2px 10px;
+height: 23px;
+width:160px;
+line-height: 20px;
+font-size: 14px;
+cursor: pointer;
+color: white;
+background: #50ACF3;
+border: 1px solid #ddd;
+text-decoration:none;
+overflow: hidden;
+display: inline-block;
+border-radius:3px;
+*display: inline;
+*zoom: 1;
+margin: auto;  
+position: relative;
+vertical-align:middle;
+}
+.a-upload  input {
+position: absolute;
+font-size: 13px;
+right: 0;
+top: 0;
+opacity: 0;
+filter: alpha(opacity=0);
+cursor: pointer
+}
+.a-upload:hover {
+color: #444;
+background: #3EA5F5;
+border-color: #ccc;
+text-decoration: none
+}
+</style>
+</head>
+<body>
+<div id="user_login">
+<form><center><table>
+<tr><td><input type="text" id="bucket_name" placeholder="服务名(空间名)"/></td></tr>
+<tr><td><input type="text" id="opename" placeholder="操作员账号"/></td></tr>
+<tr><td><input type="password" id="opepass" placeholder="操作员密码"/></td></tr>
+<tr><td><input type="button" id="save_info" onclick="switchView('view')" value="进入上传界面"/><input type="button" id="save_info" value="重新载入程序" onclick="document.location.reload();"/></td></tr>
+</table></center></form>
+</div>
+<div id="upview">
+  <div id="backlogin">
+  <a href="javascript:void(0)" onclick="switchView('login')"><img src="js/timg.gif" title="返回登录界面"/></a>
+  <a href="javascript:void(0)" onclick="continueView()" style="float:right;margin-top:2px;margin-right:5px;"><img src="js/uimg.gif" title="续传文件"/></a>
+  </div>
+  <div id="upprogress">
+	<input type="text" id="save_as" placeholder="填写保存路径，默认为：/文件名称"/>
+	<a href='javascript:;' class='a-upload'>
+    <input id="file" type="file" name="file"/>选择文件开始断点上传</a><br/><br/>
+	<input id="onmmupload" type="hidden" value=""/>
+	<input id="smidupload" type="hidden" value=""/>
+	<input id="smidupuuid" type="hidden" value=""/>
+	<input id="smidupblock" type="hidden" value=""/>
+    <div id="info"></div><br/><br/>
+  </div>
+</div>
+<div id="failup" onclick="hidefup()"></div>
+<div id="innerup"><center><table>
+<tr><td>上传的UUID: <input type="text" id="mu_uuid" placeholder="如: 8e505130-d9c7-4381-8a5d-6cfded0815e6"/></td></tr>
+<tr><td>断点的位置: <input type="text" id="part_id" placeholder="上次最后上传成功块的下一块,如: 12"/></td></tr>
+<tr><td><input type="button" id="cup" onclick="continueUp()" value="设置信息"/></td></tr>
+</table></center></div>
+</body>
+</html>
